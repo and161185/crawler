@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -54,17 +55,28 @@ func (p *page) GetLinks() []string {
 
 type Requester interface {
 	Get(ctx context.Context, url string) (Page, error)
+	GetUserDepth() int
+	IncUserDepth(val int)
 }
 
 type requester struct {
-	timeout time.Duration
+	timeout   time.Duration
+	userDepth int
 }
 
-func NewRequester(timeout time.Duration) requester {
-	return requester{timeout: timeout}
+func NewRequester(timeout time.Duration) *requester {
+	return &requester{timeout: timeout}
 }
 
-func (r requester) Get(ctx context.Context, url string) (Page, error) {
+func (r *requester) GetUserDepth() int {
+	return r.userDepth
+}
+
+func (r *requester) IncUserDepth(val int) {
+	r.userDepth = +val
+}
+
+func (r *requester) Get(ctx context.Context, url string) (Page, error) {
 	select {
 	case <-ctx.Done():
 		return nil, nil
@@ -113,7 +125,8 @@ func NewCrawler(r Requester) *crawler {
 }
 
 func (c *crawler) Scan(ctx context.Context, url string, depth int) {
-	if depth <= 0 { //Проверяем то, что есть запас по глубине
+	fmt.Println(c.r.GetUserDepth())
+	if depth+c.r.GetUserDepth() <= 0 { //Проверяем то, что есть запас по глубине
 		return
 	}
 	c.mu.RLock()
@@ -150,21 +163,25 @@ func (c *crawler) ChanResult() <-chan CrawlResult {
 
 //Config - структура для конфигурации
 type Config struct {
-	MaxDepth   int
-	MaxResults int
-	MaxErrors  int
-	Url        string
-	Timeout    int //in seconds
+	MaxDepth     int
+	UserDepthInc int
+	MaxResults   int
+	MaxErrors    int
+	MaxDuration  int
+	Url          string
+	Timeout      int //in seconds
 }
 
 func main() {
 
 	cfg := Config{
-		MaxDepth:   3,
-		MaxResults: 10,
-		MaxErrors:  5,
-		Url:        "https://telegram.org",
-		Timeout:    10,
+		MaxDepth:     3,
+		UserDepthInc: 2,
+		MaxResults:   10,
+		MaxErrors:    5,
+		MaxDuration:  10,
+		Url:          "https://telegram.org",
+		Timeout:      10,
 	}
 	var cr Crawler
 	var r Requester
@@ -172,18 +189,27 @@ func main() {
 	r = NewRequester(time.Duration(cfg.Timeout) * time.Second)
 	cr = NewCrawler(r)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.MaxDuration)*time.Second)
 	go cr.Scan(ctx, cfg.Url, cfg.MaxDepth) //Запускаем краулер в отдельной рутине
 	go processResult(ctx, cancel, cr, cfg) //Обрабатываем результаты в отдельной рутине
 
-	sigCh := make(chan os.Signal)        //Создаем канал для приема сигналов
-	signal.Notify(sigCh, syscall.SIGINT) //Подписываемся на сигнал SIGINT
+	sigCh := make(chan os.Signal)         //Создаем канал для приема сигналов
+	signal.Notify(sigCh, syscall.SIGINT)  //Подписываемся на сигнал SIGINT
+	signal.Notify(sigCh, syscall.SIGUSR1) //Подписываемся на сигнал SIGUSR1
+
 	for {
 		select {
 		case <-ctx.Done(): //Если всё завершили - выходим
+			fmt.Println(ctx.Err())
 			return
-		case <-sigCh:
-			cancel() //Если пришёл сигнал SigInt - завершаем контекст
+		case syssig := <-sigCh:
+			switch syssig {
+			case syscall.SIGINT:
+				cancel() //Если пришёл сигнал SigInt - завершаем контекст
+			case syscall.SIGUSR1:
+				r.IncUserDepth(cfg.UserDepthInc)
+			}
+
 		}
 	}
 }
