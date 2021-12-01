@@ -1,3 +1,5 @@
+//File is not `gofmt`-ed with `-s` (gofmt)
+//gofmt -s -w .\requester\requester.go
 package requester
 
 import (
@@ -50,5 +52,5 @@ func (r *Requester) Get(ctx context.Context, url string) (Page, error) {
 		}
 		return page, nil
 	}
-	return nil, nil
+	//unreachable: unreachable code (govet)
 }

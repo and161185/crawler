@@ -1,3 +1,5 @@
+//File is not `gofmt`-ed with `-s` (gofmt)
+//gofmt -s -w .\page\page.go
 package page
 
 import (
