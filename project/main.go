@@ -63,9 +63,9 @@ func main() {
 	go cr.Scan(ctx, cfg.Url, 0)                 //Запускаем краулер в отдельной рутине
 	go processResult(ctx, cancel, cr, cfg, log) //Обрабатываем результаты в отдельной рутине
 
-	sigCh := make(chan os.Signal, 1)     //sigchanyzer: misuse of unbuffered os.Signal channel as argument to signal.Notify (govet)
-	signal.Notify(sigCh, syscall.SIGINT) //Подписываемся на сигнал SIGINT
-	//signal.Notify(sigCh, syscall.SIGUSR1) //Подписываемся на сигнал SIGUSR1
+	sigCh := make(chan os.Signal, 1)      //sigchanyzer: misuse of unbuffered os.Signal channel as argument to signal.Notify (govet)
+	signal.Notify(sigCh, syscall.SIGINT)  //Подписываемся на сигнал SIGINT
+	signal.Notify(sigCh, syscall.SIGUSR1) //Подписываемся на сигнал SIGUSR1
 
 	for {
 		select {
@@ -77,9 +77,9 @@ func main() {
 			case syscall.SIGINT:
 				log.Info("got SIGINT")
 				cancel() //Если пришёл сигнал SigInt - завершаем контекст
-				//case syscall.SIGUSR1:
-				//	log.Info("got SIGUSR1")
-				//	cr.IncMaxDepth(cfg.DepthIncSize)
+			case syscall.SIGUSR1:
+				log.Info("got SIGUSR1")
+				cr.IncMaxDepth(cfg.DepthIncSize)
 			}
 
 		}
